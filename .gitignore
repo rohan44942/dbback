@@ -1,0 +1,12 @@
+# runtime artifacts
+/backups/
+/metadata/metadata.json
+*.db
+bin/
+.env
+.vscode/
+# go build
+*.exe
+*.test
+# OS
+.DS_Store
