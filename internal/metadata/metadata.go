@@ -10,16 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type BackupMeta struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	StoragePath string    `json:"storage_path"`
-	StartedAt   time.Time `json:"started_at"`
-	FinishedAt  time.Time `json:"finished_at"`
-	Size        int64     `json:"size"`
-}
-
 type FileStore struct {
 	path string
 	mu   sync.Mutex
@@ -81,4 +71,10 @@ func (f *FileStore) Get(id string) (BackupMeta, bool) {
 		}
 	}
 	return BackupMeta{}, false
+}
+
+func (fs *FileStore) UpdateScheduleLastRun(scheduleID string, t time.Time) error {
+	// abhi ke liye nil bhj rhe h bad me update kr denge schedule kaise kaise store krenge 
+	// uske according 
+	return nil
 }
