@@ -37,17 +37,52 @@ func main() {
 	case "backup":
 		fs := flag.NewFlagSet("backup", flag.ExitOnError)
 		typeFlag := fs.String("type", "sqlite", "db type: sqlite|mysql|postgres|mongo")
-		source := fs.String("source", "", "source connection string or file path")
-		name := fs.String("name", "", "friendly name")
+		sourceFlag := fs.String("source", "", "source connection string or file path")
+		nameFlag := fs.String("name", "", "friendly name for the backup (used for s3 destination)")
+		destinationFlag := fs.String("destination", "s3", "backup destination: s3 (default) or local (download to stdout)")
 		fs.Parse(os.Args[2:])
-		if *source == "" {
+
+		if *sourceFlag == "" {
 			log.Fatal("--source required")
 		}
-		id, err := backup.RunBackup(*typeFlag, *source, *name, local, store)
-		if err != nil {
-			log.Fatalf("backup failed: %v", err)
+
+		switch *destinationFlag {
+		case "s3":
+			// This is the flow for storing the backup on your S3 service.
+			var adapter backup.StorageAdapter
+			var err error
+			if cfg.Storage.Type == "s3" {
+				adapter, err = storage.NewS3Adapter(storage.S3Config{
+					Endpoint:  cfg.Storage.Endpoint,
+					AccessKey: cfg.Storage.AccessKey,
+					SecretKey: cfg.Storage.SecretKey,
+					Bucket:    cfg.Storage.Bucket,
+					UseSSL:    cfg.Storage.UseSSL,
+				})
+				if err != nil {
+					log.Fatalf("failed to create s3 adapter: %v", err)
+				}
+			}
+			// else {
+			// 	// Fallback to local storage if S3 is not configured
+			// 	adapter = local
+			// }
+
+			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, adapter, store)
+			if err != nil {
+				log.Fatalf("backup failed: %v", err)
+			}
+			fmt.Println("backup id:", id)
+		case "local":
+			// This is the new flow to stream the backup to the user.
+			// No metadata is stored, and no ID is returned.
+			if err := backup.StreamBackup(*typeFlag, *sourceFlag, os.Stdout); err != nil {
+				log.Fatalf("streaming backup failed: %v", err)
+			}
+		default:
+			log.Fatalf("invalid destination: %s. Must be 's3' or 'local'", *destinationFlag)
 		}
-		fmt.Println("backup id:", id)
+
 	case "list":
 		list, err := store.ListBackups(100)
 		if err != nil {
