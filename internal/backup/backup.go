@@ -2,7 +2,9 @@ package backup
 
 import (
 	// "compress/gzip"
+	"compress/gzip"
 	"context"
+
 	// "errors"
 	"fmt"
 	"io"
@@ -10,7 +12,7 @@ import (
 	"os/exec"
 
 	// "os/exec"
-	"path/filepath"
+
 	// "strings"
 	"time"
 
@@ -132,25 +134,42 @@ func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metad
 	start := time.Now()
 
 	// in Phase 2 we still dump locally then upload; Phase 3 can stream directly
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d.bak", dbType, start.Unix()))
-	if err := performDump(dbType, source, tmpFile); err != nil {
-		return "", err
-	}
-	defer os.Remove(tmpFile)
+	// We will use a pipe to stream the dump through a gzip compressor directly to the storage adapter.
+	// This avoids creating a temporary file on disk.
+	pr, pw := io.Pipe()
+	gw := gzip.NewWriter(pw)
 
-	f, err := os.Open(tmpFile)
+	var dumpErr error
+	go func() {
+		defer pw.Close()
+		defer gw.Close()
+		dumpErr = performDump(dbType, source, gw)
+	}()
+
+	// The object name should reflect that it's compressed.
+	objectName := fmt.Sprintf("%s/%s-%d.gz", dbType, nameOrDefault(name, "backup"), start.Unix())
+	// objectName := fmt.Sprintf("%s/%s-%d.bak", dbType, nameOrDefault(name, "backup"), start.Unix())
+
+	// The size is unknown for a stream, so we pass -1.
+	// The storage adapter (e.g., S3) will handle this.
+	loc, err := adapter.Save(ctx, objectName, pr, -1, "application/gzip")
+	fmt.Print("logging the file path: ", loc)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to save to storage: %w", err)
 	}
-	defer f.Close()
 
-	stat, _ := f.Stat()
-	objectName := fmt.Sprintf("%s/%s-%d.bak", dbType, nameOrDefault(name, "backup"), start.Unix())
-
-	loc, err := adapter.Save(ctx, objectName, f, stat.Size(), "application/octet-stream")
-	if err != nil {
-		return "", err
+	// Check for any errors from the dump goroutine.
+	if dumpErr != nil {
+		return "", fmt.Errorf("database dump failed: %w", dumpErr)
 	}
+
+	// Since we streamed the data, we don't know the final size beforehand.
+	// We can either get it from the storage adapter's response (if available)
+	// or perform a Stat call. For now, we'll leave it as 0.
+	// A better solution would be to update the StorageAdapter interface
+	// to return the size.
+	// For now, let's assume size is not critical for the metadata record.
+	var finalSize int64 = 0
 
 	meta := metadata.BackupMeta{
 		Name:        nameOrDefault(name, "backup"),
@@ -158,7 +177,7 @@ func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metad
 		StoragePath: loc,
 		StartedAt:   start,
 		FinishedAt:  time.Now(),
-		Size:        stat.Size(),
+		Size:        finalSize, // Size of the *compressed* file.
 	}
 	return store.AddBackup(meta)
 }
@@ -171,7 +190,7 @@ func nameOrDefault(s, def string) string {
 }
 
 // performDump – minimal mock; extend for MySQL/PG later
-func performDump(dbType, source, target string) error {
+func performDump(dbType, source string, writer io.Writer) error {
 	switch dbType {
 	case "sqlite":
 		in, err := os.Open(source)
@@ -179,12 +198,7 @@ func performDump(dbType, source, target string) error {
 			return err
 		}
 		defer in.Close()
-		out, err := os.Create(target)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		_, err = io.Copy(out, in)
+		_, err = io.Copy(writer, in)
 		return err
 	default:
 		// Let's add the other DB types here for streaming.
@@ -201,20 +215,25 @@ func performDump(dbType, source, target string) error {
 		}
 
 		cmd.Stderr = os.Stderr // Forward errors to the user's console
-		// cmd.Stdout = out
+		cmd.Stdout = writer
 		return cmd.Run()
-		// return fmt.Errorf("unsupported db type %s", dbType)
 	}
 }
 
 // RestoreFromReader restores backup file from provided reader.
 func RestoreFromReader(r io.Reader, targetPath string) error {
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return err // This is where "gzip: invalid header" would come from.
+	}
+	defer gr.Close()
+
 	out, err := os.Create(targetPath)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, r)
+	_, err = io.Copy(out, gr)
 	return err
 }
 
@@ -225,9 +244,9 @@ func StreamBackup(dbType, source string, w io.Writer) error {
 	// but for efficiency, we can write directly to the writer.
 	// Let's adapt performDump's logic to stream.
 	if dbType == "sqlite" {
-		return performDump(dbType, source, "file_name_placeholder") // Special case for sqlite to copy file
+		return performDump(dbType, source, w) // Special case for sqlite to copy file
 	}
 
 	// For command-based dumps, we can pipe stdout directly.
-	return performDump(dbType, source, "file_name_placeholder")
+	return performDump(dbType, source, w)
 }

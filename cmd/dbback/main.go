@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -50,9 +51,9 @@ func main() {
 		case "s3":
 			// This is the flow for storing the backup on your S3 service.
 			var adapter backup.StorageAdapter
-			var err error
-			if cfg.Storage.Type == "s3" {
-				adapter, err = storage.NewS3Adapter(storage.S3Config{
+
+			if cfg != nil && cfg.Storage.Type == "s3" {
+				s3Adapter, err := storage.NewS3Adapter(storage.S3Config{
 					Endpoint:  cfg.Storage.Endpoint,
 					AccessKey: cfg.Storage.AccessKey,
 					SecretKey: cfg.Storage.SecretKey,
@@ -60,13 +61,16 @@ func main() {
 					UseSSL:    cfg.Storage.UseSSL,
 				})
 				if err != nil {
-					log.Fatalf("failed to create s3 adapter: %v", err)
+					log.Printf("warning: failed to create s3 adapter, falling back to local storage: %v", err)
+					adapter = local
+				} else {
+					log.Println("using s3 storage adapter")
+					adapter = s3Adapter
 				}
+			} else {
+				log.Println("s3 not configured, using local storage adapter")
+				adapter = local
 			}
-			// else {
-			// 	// Fallback to local storage if S3 is not configured
-			// 	adapter = local
-			// }
 
 			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, adapter, store)
 			if err != nil {
@@ -85,6 +89,7 @@ func main() {
 
 	case "list":
 		list, err := store.ListBackups(100)
+		// TODO: Handle error where store is nil if DBPath is not in config
 		if err != nil {
 			log.Fatalf("list failed: %v", err)
 		}
@@ -103,10 +108,33 @@ func main() {
 		if err != nil {
 			log.Fatalf("backup not found: %v", err)
 		}
-		r, err := local.Open(b.StoragePath)
+
+		// Determine which adapter to use for restoring.
+		var adapter backup.StorageAdapter
+		if cfg != nil && cfg.Storage.Type == "s3" {
+			s3Adapter, err := storage.NewS3Adapter(storage.S3Config{
+				Endpoint:  cfg.Storage.Endpoint,
+				AccessKey: cfg.Storage.AccessKey,
+				SecretKey: cfg.Storage.SecretKey,
+				Bucket:    cfg.Storage.Bucket,
+				UseSSL:    cfg.Storage.UseSSL,
+			})
+			if err != nil {
+				// If S3 fails to init, we assume the backup must be local.
+				log.Printf("warning: could not init s3 adapter, assuming local backup: %v", err)
+				adapter = local
+			} else {
+				adapter = s3Adapter
+			}
+		} else {
+			adapter = local
+		}
+
+		r, err := adapter.Open(context.Background(), b.StoragePath)
 		if err != nil {
 			log.Fatalf("open backup failed: %v", err)
 		}
+		defer r.Close()
 		if err := backup.RestoreFromReader(r, *target); err != nil {
 			log.Fatalf("restore failed: %v", err)
 		}

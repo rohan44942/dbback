@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,17 +16,25 @@ func NewLocal(base string) *Local {
 	return &Local{Base: base}
 }
 
-func (l *Local) Save(name string, r io.Reader) (string, int64, error) {
-	path := filepath.Join(l.Base, name)
+// Save stores the content from the reader to a local file.
+// It implements the backup.StorageAdapter interface.
+func (l *Local) Save(ctx context.Context, objectName string, reader io.Reader, size int64, contentType string) (string, error) {
+	path := filepath.Join(l.Base, objectName)
+	// Ensure the directory for the object exists
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", err
+	}
 	f, err := os.Create(path)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	defer f.Close()
-	n, err := io.Copy(f, r)
-	return path, n, err
+	_, err = io.Copy(f, reader)
+	return path, err
 }
 
-func (l *Local) Open(path string) (io.ReadCloser, error) {
-	return os.Open(path)
+// Open retrieves a reader for a local backup file.
+// It implements the backup.StorageAdapter interface.
+func (l *Local) Open(ctx context.Context, objectName string) (io.ReadCloser, error) {
+	return os.Open(filepath.Join(l.Base, objectName))
 }
