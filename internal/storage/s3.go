@@ -55,15 +55,22 @@ func (s *S3Adapter) Save(ctx context.Context, objectName string, reader io.Reade
 	opts := minio.PutObjectOptions{
 		ContentType: contentType,
 	}
-	info, err := s.client.PutObject(ctx, s.bucket, objectName, reader, size, opts)
+	_, err := s.client.PutObject(ctx, s.bucket, objectName, reader, size, opts)
 	if err != nil {
 		return "", err
 	}
-	return info.Location, nil
+	return objectName, nil
 }
 
 func (s *S3Adapter) Open(ctx context.Context, objectName string) (io.ReadCloser, error) {
-	obj, err := s.client.GetObject(ctx, s.bucket, objectName, minio.GetObjectOptions{})
+	objname, err := ObjectNameFromLocation(objectName)
+	if err != nil {
+		return nil, err
+	}
+	if objname == "" {
+		return nil, ErrNoObjectName
+	}
+	obj, err := s.client.GetObject(ctx, s.bucket, objname, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -89,17 +96,18 @@ func (s *S3Adapter) PresignedURL(ctx context.Context, objectName string, expiry 
 }
 
 // helper: extract object name from stored location. If stored path is full URL, attempt to parse.
-func objectNameFromLocation(loc string) (string, error) {
-	// naive: if contains bucket then find last slash
+func ObjectNameFromLocation(loc string) (string, error) {
 	if strings.HasPrefix(loc, "http") {
 		u, err := url.Parse(loc)
 		if err != nil {
 			return "", err
 		}
-		return u.Path[1:], nil // drop leading slash
+		return strings.TrimPrefix(u.Path, "/"), nil
 	}
-	// otherwise assume it's object name
-	return loc, nil
+
+	// normalize Windows-style paths
+	loc = strings.ReplaceAll(loc, "\\", "/")
+	return strings.TrimPrefix(loc, "/"), nil
 }
 
 var ErrNoObjectName = errors.New("no object name")

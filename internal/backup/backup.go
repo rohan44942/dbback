@@ -1,7 +1,6 @@
 package backup
 
 import (
-	// "compress/gzip"
 	"compress/gzip"
 	"context"
 
@@ -10,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	// "os/exec"
 
@@ -227,6 +227,11 @@ func RestoreFromReader(r io.Reader, targetPath string) error {
 		return err // This is where "gzip: invalid header" would come from.
 	}
 	defer gr.Close()
+
+	// Ensure the target directory exists before creating the file.
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return err
+	}
 
 	out, err := os.Create(targetPath)
 	if err != nil {
