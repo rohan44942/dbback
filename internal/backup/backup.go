@@ -208,11 +208,11 @@ func performDump(dbType, source string, writer io.Writer) error {
 		var cmd *exec.Cmd
 		switch dbType {
 		case "mysql":
-			cmd = exec.Command("sh", "-c", fmt.Sprintf("mysqldump %s", source))
+			cmd = exec.Command("mysqldump", source)
 		case "postgres", "postgresql":
-			cmd = exec.Command("sh", "-c", fmt.Sprintf("pg_dump %s", source))
+			cmd = exec.Command("pg_dump", source)
 		case "mongo", "mongodb":
-			cmd = exec.Command("sh", "-c", fmt.Sprintf("mongodump --uri '%s' --archive", source))
+			cmd = exec.Command("mongodump", "--uri", source, "--archive")
 		default:
 			return fmt.Errorf("unsupported db type %s", dbType)
 		}
