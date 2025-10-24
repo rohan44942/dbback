@@ -7,14 +7,16 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/rohan44942/dbback/internal/metadata"
+	"github.com/rohan44942/dbback/internal/scheduler"
 )
 
 type Server struct {
-	Store *metadata.Store
+	Store     *metadata.Store
+	Scheduler *scheduler.Scheduler
 }
 
-func NewServer(store *metadata.Store) *Server {
-	return &Server{Store: store}
+func NewServer(store *metadata.Store, sched *scheduler.Scheduler) *Server {
+	return &Server{Store: store, Scheduler: sched}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -23,6 +25,7 @@ func (s *Server) Routes() http.Handler {
 	r.HandleFunc("/api/backups/{id}", s.getBackup).Methods("GET")
 	r.HandleFunc("/api/schedules", s.listSchedules).Methods("GET")
 	r.HandleFunc("/api/schedules", s.createSchedule).Methods("POST")
+	r.HandleFunc("/api/schedules/{id}", s.deleteSchedule).Methods("DELETE")
 	return r
 }
 
@@ -82,4 +85,30 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
+
+	// Also add it to the running scheduler instance
+	if s.Scheduler != nil {
+		// We need the full schedule object back from the store
+		fullSchedule, _ := s.Store.GetSchedule(id) // Error handling omitted for brevity
+		s.Scheduler.AddSchedule(fullSchedule)
+	}
+}
+
+func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	// Remove from database
+	err := s.Store.DeleteSchedule(id)
+	if err != nil {
+		http.Error(w, "failed to delete schedule from store", http.StatusInternalServerError)
+		return
+	}
+
+	// Remove from running scheduler instance
+	if s.Scheduler != nil {
+		s.Scheduler.RemoveSchedule(id)
+	}
+
+	w.WriteHeader(http.StatusNoContent) // 204 No Content is appropriate for successful deletion
 }

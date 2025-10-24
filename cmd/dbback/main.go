@@ -86,7 +86,6 @@ func main() {
 		default:
 			log.Fatalf("invalid destination: %s. Must be 's3' or 'local'", *destinationFlag)
 		}
-
 	case "list":
 		list, err := store.ListBackups(100)
 		// TODO: Handle error where store is nil if DBPath is not in config
@@ -176,8 +175,23 @@ func main() {
 			for _, s := range schs {
 				fmt.Printf("ID:%s DB:%s Source:%s Cron:%s Retain:%d LastRun:%v\n", s.ID, s.DBType, s.Source, s.CronExpr, s.RetentionDays, s.LastRun)
 			}
+		case "remove":
+			fs := flag.NewFlagSet("schedule remove", flag.ExitOnError)
+			id := fs.String("id", "", "schedule id to remove")
+			fs.Parse(os.Args[3:])
+			if *id == "" {
+				log.Fatal("--id required")
+			}
+
+			err := store.DeleteSchedule(*id)
+			if err != nil {
+				log.Fatalf("failed to remove schedule: %v", err)
+			}
+			fmt.Printf("schedule %s removed successfully\n", *id)
+
 		default:
-			fmt.Println("unknown schedule op")
+			fmt.Println("unknown schedule optiion", op)
+			os.Exit(1)
 		}
 	default:
 		fmt.Println("unknown command", cmd)

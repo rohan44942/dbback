@@ -12,6 +12,7 @@ import (
 	api "github.com/rohan44942/dbback/internal/api/handlers"
 	"github.com/rohan44942/dbback/internal/config"
 	"github.com/rohan44942/dbback/internal/metadata"
+	"github.com/rohan44942/dbback/internal/scheduler"
 	"github.com/rohan44942/dbback/internal/storage"
 )
 
@@ -30,8 +31,8 @@ func main() {
 		log.Fatalf("metadata store: %v", err)
 	}
 
-	// var s3Adapter *storage.S3Adapter
-	// var localAdapter *storage.Local
+	var s3Adapter *storage.S3Adapter
+	localAdapter := storage.NewLocal("backups")
 	if cfg.Storage.Type == "s3" {
 		s3Cfg := storage.S3Config{
 			Endpoint:  cfg.Storage.Endpoint,
@@ -40,17 +41,26 @@ func main() {
 			Bucket:    cfg.Storage.Bucket,
 			UseSSL:    cfg.Storage.UseSSL,
 		}
-		// s3Adapter , err := storage.NewS3Adapter(s3Cfg)
-		_, err := storage.NewS3Adapter(s3Cfg)
+		s3Adapter, err = storage.NewS3Adapter(s3Cfg)
 		if err != nil {
 			log.Fatalf("s3 adapter: %v", err)
 		}
-	} else {
-		// localAdapter = storage.NewLocal("backups")
-		_ = storage.NewLocal("backups")
 	}
 
-	srv := api.NewServer(store)
+	// Start the scheduler to run backup jobs
+	sched := scheduler.New(store, s3Adapter, localAdapter)
+	schedules, err := store.ListSchedules()
+	if err != nil {
+		log.Printf("could not load schedules to run: %v", err)
+	}
+	for _, sc := range schedules {
+		log.Printf("before the add schedule of scheduler")
+		sched.AddSchedule(sc)
+	}
+	sched.Start()
+	log.Printf("scheduler started, loaded %d schedules", len(schedules))
+
+	srv := api.NewServer(store, sched)
 	handler := srv.Routes()
 	s := &http.Server{
 		Addr:    cfg.Server.Addr,
@@ -65,10 +75,6 @@ func main() {
 		}
 	}()
 
-	// optional: I can start scheduler here if I want controller to manage schedules
-	// sched := scheduler.New(store, s3Adapter, localAdapter)
-	// sched.Start()
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
@@ -76,4 +82,5 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = s.Shutdown(ctx)
+	sched.Stop()
 }

@@ -7,6 +7,7 @@ import (
 	// "errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,6 +132,8 @@ type StorageAdapter interface {
 // RunBackup performs backup and uploads it through the adapter (local or S3)
 func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metadata.Store) (string, error) {
 	ctx := context.Background()
+	log.Printf("starting backup for source '%s'", source)
+
 	start := time.Now()
 
 	// in Phase 2 we still dump locally then upload; Phase 3 can stream directly
@@ -153,7 +156,7 @@ func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metad
 	// The size is unknown for a stream, so we pass -1.
 	// The storage adapter (e.g., S3) will handle this.
 	loc, err := adapter.Save(ctx, objectName, pr, -1, "application/gzip")
-	fmt.Print("logging the file path: ", loc)
+	log.Printf("backup for job %s saved to location: %s", name, loc)
 	if err != nil {
 		return "", fmt.Errorf("failed to save to storage: %w", err)
 	}

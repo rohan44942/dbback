@@ -181,7 +181,35 @@ func (s *Store) ListSchedules() ([]Schedule, error) {
 	return res, nil
 }
 
+func (s *Store) GetSchedule(id string) (Schedule, error) {
+	row := s.db.QueryRow(`SELECT id,db_type,source,cron_expr,retention_days,created_at,last_run FROM schedules WHERE id = ?`, id)
+	var sc Schedule
+	var created int64
+	var lastRun sql.NullInt64
+
+	if err := row.Scan(&sc.ID, &sc.DBType, &sc.Source, &sc.CronExpr, &sc.RetentionDays, &created, &lastRun); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Schedule{}, sql.ErrNoRows
+		}
+		return Schedule{}, err
+	}
+
+	sc.CreatedAt = time.Unix(created, 0)
+	if lastRun.Valid {
+		sc.LastRun = sql.NullTime{Time: time.Unix(lastRun.Int64, 0), Valid: true}
+	} else {
+		sc.LastRun = sql.NullTime{Valid: false}
+	}
+
+	return sc, nil
+}
+
 func (s *Store) UpdateScheduleLastRun(id string, t time.Time) error {
 	_, err := s.db.Exec(`UPDATE schedules SET last_run = ? WHERE id = ?`, t.Unix(), id)
+	return err
+}
+
+func (s *Store) DeleteSchedule(id string) error {
+	_, err := s.db.Exec(`DELETE FROM schedules WHERE id = ?`, id)
 	return err
 }
