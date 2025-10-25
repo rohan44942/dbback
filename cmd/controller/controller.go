@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,7 +18,10 @@ import (
 )
 
 func main() {
-	logger.Init()
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		log.Fatalf("failed to create logs directory: %v", err)
+	}
+	logger.Init("logs/controller.log")
 	logger.Log.Info("Starting dbback controller")
 	cfgPath := "configs/config.yaml"
 	if p := os.Getenv("DBBACK_CONFIG"); p != "" {

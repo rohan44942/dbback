@@ -18,13 +18,14 @@ import (
 )
 
 func main() {
-	logger.Init()
+	logger.Init("logs/dbback.log")
 	logger.Log.Info("Starting dbback CLI")
 	if len(os.Args) < 2 {
 		fmt.Println("usage: dbback <command> [options]\ncommands: backup, restore, list, schedule")
 		os.Exit(1)
 	}
 	cmd := os.Args[1]
+	os.MkdirAll("logs", 0755)
 	os.MkdirAll("backups", 0755)
 	os.MkdirAll("metadata", 0755)
 
