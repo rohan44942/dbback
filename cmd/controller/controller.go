@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,24 +10,29 @@ import (
 
 	api "github.com/rohan44942/dbback/internal/api/handlers"
 	"github.com/rohan44942/dbback/internal/config"
+	"github.com/rohan44942/dbback/internal/logger"
 	"github.com/rohan44942/dbback/internal/metadata"
 	"github.com/rohan44942/dbback/internal/scheduler"
 	"github.com/rohan44942/dbback/internal/storage"
 )
 
 func main() {
+	logger.Init()
+	logger.Log.Info("Starting dbback controller")
 	cfgPath := "configs/config.yaml"
 	if p := os.Getenv("DBBACK_CONFIG"); p != "" {
 		cfgPath = p
 	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		logger.Log.Error("failed to load config", "path", cfgPath, "error", err)
+		os.Exit(1)
 	}
 
 	store, err := metadata.NewStore(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("metadata store: %v", err)
+		logger.Log.Error("failed to create metadata store", "path", cfg.DBPath, "error", err)
+		os.Exit(1)
 	}
 
 	var s3Adapter *storage.S3Adapter
@@ -43,22 +47,22 @@ func main() {
 		}
 		s3Adapter, err = storage.NewS3Adapter(s3Cfg)
 		if err != nil {
-			log.Fatalf("s3 adapter: %v", err)
+			logger.Log.Error("failed to create s3 adapter", "error", err)
+			os.Exit(1)
 		}
 	}
 
 	// Start the scheduler to run backup jobs
-	sched := scheduler.New(store, s3Adapter, localAdapter)
+	sched := scheduler.New(store, s3Adapter, localAdapter, cfg.SlackWebhookURL)
 	schedules, err := store.ListSchedules()
 	if err != nil {
-		log.Printf("could not load schedules to run: %v", err)
+		logger.Log.Warn("could not load schedules to run", "error", err)
 	}
 	for _, sc := range schedules {
-		log.Printf("before the add schedule of scheduler")
 		sched.AddSchedule(sc)
 	}
 	sched.Start()
-	log.Printf("scheduler started, loaded %d schedules", len(schedules))
+	logger.Log.Info("scheduler started", "schedules_loaded", len(schedules))
 
 	srv := api.NewServer(store, sched)
 	handler := srv.Routes()
@@ -69,16 +73,17 @@ func main() {
 
 	// graceful shutdown
 	go func() {
-		log.Printf("starting controller at %s", cfg.Server.Addr)
+		logger.Log.Info("starting http server", "address", s.Addr)
 		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: %v", err)
+			logger.Log.Error("http server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
-	log.Println("shutting down")
+	logger.Log.Info("shutting down server and scheduler")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = s.Shutdown(ctx)

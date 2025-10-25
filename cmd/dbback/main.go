@@ -11,11 +11,15 @@ import (
 
 	"github.com/rohan44942/dbback/internal/backup"
 	"github.com/rohan44942/dbback/internal/config"
+	"github.com/rohan44942/dbback/internal/logger"
 	"github.com/rohan44942/dbback/internal/metadata"
+	"github.com/rohan44942/dbback/internal/notify"
 	"github.com/rohan44942/dbback/internal/storage"
 )
 
 func main() {
+	logger.Init()
+	logger.Log.Info("Starting dbback CLI")
 	if len(os.Args) < 2 {
 		fmt.Println("usage: dbback <command> [options]\ncommands: backup, restore, list, schedule")
 		os.Exit(1)
@@ -44,7 +48,8 @@ func main() {
 		fs.Parse(os.Args[2:])
 
 		if *sourceFlag == "" {
-			log.Fatal("--source required")
+			logger.Log.Error("--source required")
+			os.Exit(1)
 		}
 
 		switch *destinationFlag {
@@ -61,27 +66,31 @@ func main() {
 					UseSSL:    cfg.Storage.UseSSL,
 				})
 				if err != nil {
-					log.Printf("warning: failed to create s3 adapter, falling back to local storage: %v", err)
+					logger.Log.Warn("failed to create s3 adapter, falling back to local storage", "error", err)
 					adapter = local
 				} else {
-					log.Println("using s3 storage adapter")
+					logger.Log.Info("using s3 storage adapter")
 					adapter = s3Adapter
 				}
 			} else {
-				log.Println("s3 not configured, using local storage adapter")
+				logger.Log.Info("s3 not configured, using local storage adapter")
 				adapter = local
 			}
 
-			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, adapter, store)
+			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, adapter, store, cfg.SlackWebhookURL)
 			if err != nil {
-				log.Fatalf("backup failed: %v", err)
+				// The notification is handled inside RunBackup, so we just log and exit here.
+				logger.Log.Error("backup command failed", "error", err)
+				os.Exit(1)
 			}
 			fmt.Println("backup id:", id)
 		case "local":
 			// This is the new flow to stream the backup to the user.
 			// No metadata is stored, and no ID is returned.
 			if err := backup.StreamBackup(*typeFlag, *sourceFlag, os.Stdout); err != nil {
-				log.Fatalf("streaming backup failed: %v", err)
+				logger.Log.Error("streaming backup failed", "error", err)
+				_ = notify.SendSlackNotification(cfg.SlackWebhookURL, fmt.Sprintf(":x: Streaming backup failed for source %s: %v", *sourceFlag, err))
+				os.Exit(1)
 			}
 		default:
 			log.Fatalf("invalid destination: %s. Must be 's3' or 'local'", *destinationFlag)

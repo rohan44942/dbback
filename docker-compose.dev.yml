@@ -28,6 +28,8 @@ services:
       DBBACK_STORAGE_ACCESS_KEY: minioadmin
       DBBACK_STORAGE_SECRET_KEY: minioadmin
       DBBACK_SERVER_ADDR: ":8080"
+      # This passes the webhook URL from your .env file into the container
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
     ports:
       - "8080:8080"
     volumes:

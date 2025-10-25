@@ -39,6 +39,10 @@ The project has moved beyond its initial scaffolding and now includes a robust s
   - Backup and schedule metadata is stored in a durable **SQLite database**.
   - Application behavior (storage, server address, etc.) is managed through a `config.yaml` file.
 
+- **Logging and Notifications**:
+  - Implemented structured logging (`slog`) throughout the application for clear, machine-readable log output.
+  - Automatic **Slack notifications** for backup failures. This is configured by setting the `SLACK_WEBHOOK_URL` environment variable.
+
 - **Containerized Deployment**:
   - Includes a `docker-compose.dev.yml` for a one-command development setup, complete with a MinIO instance for S3 testing.
 
@@ -71,6 +75,13 @@ docker-compose -f docker-compose.dev.yml up --build
     - Copy `configs/config.yaml.example` to `configs/config.yaml` and edit it to match your environment (e.g., S3 credentials, database path).
 
 3.  **Run the controller:**
+    To enable Slack notifications, first set the environment variable:
+    ```sh
+    # Get this URL from your Slack App's "Incoming Webhooks" configuration.
+    export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+    ```
+
+    Then run the controller:
     ```sh
     ./bin/controller
     ```
@@ -97,17 +108,14 @@ The roadmap for `dbback` includes several key enhancements to make it a producti
   - The controller will periodically run a cleanup job to prune old backups from storage and metadata according to the retention policy defined in each schedule.
 
 - **Comprehensive Logging and Monitoring**:
-  - Implement structured logging (e.g., using `zerolog` or `slog`) for both the CLI and controller for better observability.
   - Add a metrics endpoint (e.g., `/metrics`) for Prometheus scraping to monitor backup successes, failures, durations, and sizes.
 
 - **API and System Testing**:
   - Develop a suite of integration tests for the API to ensure reliability.
   - Write end-to-end tests for the backup and restore flows for each supported database.
 
-- **Web UI**:
-  - Build a simple web-based user interface that interacts with the controller's API.
-  - The UI will provide a dashboard to view backup history, manage schedules, and monitor the system's health.
-
 - **Improved Error Handling and Notifications**:
-  - Implement a notification system (e.g., email, Slack webhooks) to alert administrators of backup failures.
   - Enhance error reporting in the API and logs to make debugging easier.
+
+- **Web UI**:
+  - Build a simple web-based user interface that interacts with the controller's API to provide a dashboard for viewing backup history, managing schedules, and monitoring system health.

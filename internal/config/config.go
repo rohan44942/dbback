@@ -26,6 +26,7 @@ type AppConfig struct {
 	Retention int           `yaml:"retention_days"`
 	Key       string        `yaml:"encryption_key"` //  32-byte key
 	Server    ServerConfig  `yaml:"server"`
+	SlackWebhookURL string  `yaml:"-"` // This time not by YAML but loaded from env
 }
 
 func Load(path string) (*AppConfig, error) {
@@ -78,5 +79,8 @@ func loadFromEnv(cfg *AppConfig) {
 	}
 	if v := os.Getenv("DBBACK_ADDR"); v != "" {
 		cfg.Server.Addr = v
+	}
+	if v := os.Getenv("SLACK_WEBHOOK_URL"); v != "" {
+		cfg.SlackWebhookURL = v
 	}
 }
