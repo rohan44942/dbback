@@ -13,3 +13,4 @@ bin/
 docker-compose.yml 
 config.yaml
 /logs
+.gocache/
