@@ -3,6 +3,7 @@ package metadata
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ type BackupMeta struct {
 	StartedAt   time.Time
 	FinishedAt  time.Time
 	Size        int64
+	ScheduleID  sql.NullString
 }
 
 type Schedule struct {
@@ -53,10 +55,10 @@ func (s *Store) migrate() error {
 			type TEXT,
 			storage_path TEXT,
 			started_at INTEGER,
-			finished_at INTEGER,
+			finished_at INTEGER, 
+			schedule_id TEXT,
 			size INTEGER
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_backups_finished_at ON backups(finished_at);`,
 		`CREATE TABLE IF NOT EXISTS schedules (
 			id TEXT PRIMARY KEY,
 			db_type TEXT,
@@ -72,6 +74,23 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
+
+	legacyColumns := []string{
+		`ALTER TABLE backups ADD COLUMN started_at INTEGER DEFAULT 0;`,
+		`ALTER TABLE backups ADD COLUMN finished_at INTEGER DEFAULT 0;`,
+		`ALTER TABLE backups ADD COLUMN schedule_id TEXT;`,
+		`ALTER TABLE backups ADD COLUMN size INTEGER DEFAULT 0;`,
+		`ALTER TABLE schedules ADD COLUMN last_run INTEGER;`,
+	}
+	for _, st := range legacyColumns {
+		if _, err := s.db.Exec(st); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return err
+		}
+	}
+
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_backups_finished_at ON backups(finished_at);`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -80,8 +99,8 @@ func (s *Store) AddBackup(b BackupMeta) (string, error) {
 		b.ID = uuid.New().String()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO backups(id,name,type,storage_path,started_at,finished_at,size) VALUES(?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Type, b.StoragePath, b.StartedAt.Unix(), b.FinishedAt.Unix(), b.Size,
+		`INSERT INTO backups(id,name,type,storage_path,started_at,finished_at,size,schedule_id) VALUES(?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Type, b.StoragePath, b.StartedAt.Unix(), b.FinishedAt.Unix(), b.Size, b.ScheduleID,
 	)
 	if err != nil {
 		return "", err
@@ -90,7 +109,7 @@ func (s *Store) AddBackup(b BackupMeta) (string, error) {
 }
 
 func (s *Store) ListBackups(limit int) ([]BackupMeta, error) {
-	rows, err := s.db.Query(`SELECT id,name,type,storage_path,started_at,finished_at,size FROM backups ORDER BY finished_at DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT id,name,type,storage_path,started_at,finished_at,size,schedule_id FROM backups ORDER BY finished_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +119,7 @@ func (s *Store) ListBackups(limit int) ([]BackupMeta, error) {
 	for rows.Next() {
 		var b BackupMeta
 		var started, finished int64
-		if err := rows.Scan(&b.ID, &b.Name, &b.Type, &b.StoragePath, &started, &finished, &b.Size); err != nil {
+		if err := rows.Scan(&b.ID, &b.Name, &b.Type, &b.StoragePath, &started, &finished, &b.Size, &b.ScheduleID); err != nil {
 			return nil, err
 		}
 		b.StartedAt = time.Unix(started, 0)
@@ -111,10 +130,10 @@ func (s *Store) ListBackups(limit int) ([]BackupMeta, error) {
 }
 
 func (s *Store) GetBackup(id string) (BackupMeta, error) {
-	row := s.db.QueryRow(`SELECT id,name,type,storage_path,started_at,finished_at,size FROM backups WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT id,name,type,storage_path,started_at,finished_at,size,schedule_id FROM backups WHERE id = ?`, id)
 	var b BackupMeta
 	var started, finished int64
-	if err := row.Scan(&b.ID, &b.Name, &b.Type, &b.StoragePath, &started, &finished, &b.Size); err != nil {
+	if err := row.Scan(&b.ID, &b.Name, &b.Type, &b.StoragePath, &started, &finished, &b.Size, &b.ScheduleID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return BackupMeta{}, sql.ErrNoRows
 		}
@@ -123,6 +142,26 @@ func (s *Store) GetBackup(id string) (BackupMeta, error) {
 	b.StartedAt = time.Unix(started, 0)
 	b.FinishedAt = time.Unix(finished, 0)
 	return b, nil
+}
+func (s *Store) ListBackupsBySchedule(scheduleID string) ([]BackupMeta, error) {
+	rows, err := s.db.Query(`SELECT id,name,type,storage_path,started_at,finished_at,size,schedule_id FROM backups WHERE schedule_id = ? ORDER BY finished_at DESC`, scheduleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []BackupMeta
+	for rows.Next() {
+		var b BackupMeta
+		var started, finished int64
+		if err := rows.Scan(&b.ID, &b.Name, &b.Type, &b.StoragePath, &started, &finished, &b.Size, &b.ScheduleID); err != nil {
+			return nil, err
+		}
+		b.StartedAt = time.Unix(started, 0)
+		b.FinishedAt = time.Unix(finished, 0)
+		res = append(res, b)
+	}
+	return res, nil
 }
 
 func (s *Store) DeleteBackup(id string) error {

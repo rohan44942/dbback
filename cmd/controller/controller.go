@@ -68,7 +68,7 @@ func main() {
 	sched.Start()
 	logger.Log.Info("scheduler started", "schedules_loaded", len(schedules))
 
-	srv := api.NewServer(store, sched)
+	srv := api.NewServer(store, sched, localAdapter, s3Adapter)
 	handler := srv.Routes()
 	s := &http.Server{
 		Addr:    cfg.Server.Addr,

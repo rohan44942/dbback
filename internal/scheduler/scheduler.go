@@ -10,6 +10,7 @@ import (
 	"github.com/rohan44942/dbback/internal/backup"
 	"github.com/rohan44942/dbback/internal/metadata"
 	"github.com/rohan44942/dbback/internal/notify"
+	"github.com/rohan44942/dbback/internal/retention"
 	"github.com/rohan44942/dbback/internal/storage"
 )
 
@@ -43,6 +44,9 @@ func New(store *metadata.Store, s3 *storage.S3Adapter, local *storage.Local, sla
 
 func (s *Scheduler) Start() {
 	s.cron.Start() // The fmt.Print here can cause messy log output.
+	s.logger.Info("scheduler started")
+	s.StartRetentionPolicy()
+	s.logger.Info("retention policy job scheduled")
 }
 
 func (s *Scheduler) Stop() {
@@ -62,8 +66,8 @@ func (s *Scheduler) AddSchedule(sc metadata.Schedule) (cron.EntryID, error) {
 		// call backup.RunBackup with configured params
 		// The adapter selection logic should ideally be more robust,
 		// but for now, we pass s.s3 (which might be nil) and s.local.
-		// The RunBackup function will handle which one to use.
-		backupID, err := backup.RunBackup(sc.DBType, sc.Source, "scheduled-"+sc.ID, s.s3, s.store, s.slackWebhookURL)
+		// The RunBackup function will handle which one to use. We pass the schedule ID.
+		backupID, err := backup.RunBackup(sc.DBType, sc.Source, "scheduled-"+sc.ID, sc.ID, s.s3, s.store, s.slackWebhookURL)
 		if err != nil {
 			errMsg := fmt.Sprintf("scheduled backup failed for source %s (schedule %s)", sc.Source, sc.ID)
 			s.logger.Error(errMsg, "error", err)
@@ -88,5 +92,30 @@ func (s *Scheduler) RemoveSchedule(scheduleID string) {
 		s.logger.Info("removed schedule from cron", "schedule_id", scheduleID)
 	} else {
 		s.logger.Warn("schedule not found in cron, nothing to remove", "schedule_id", scheduleID)
+	}
+}
+
+func (s *Scheduler) StartRetentionPolicy() {
+	s.logger.Info("scheduling retention policy job")
+
+	// This cron expression means "at 01:05 every day".
+	_, err := s.cron.AddFunc("30 * * * * *", func() { // Run at 30s past the minute
+		s.logger.Info("running retention policy job")
+
+		var adapter backup.StorageAdapter
+		// Prefer S3 adapter if it's configured, otherwise use local.
+		if s.s3 != nil {
+			adapter = s.s3
+		} else {
+			adapter = s.local
+		}
+
+		if err := retention.ApplyRetention(s.ctx, s.store, adapter); err != nil {
+			s.logger.Error("retention policy job failed", "error", err)
+		}
+	})
+
+	if err != nil {
+		s.logger.Error("failed to schedule retention policy job", "error", err)
 	}
 }

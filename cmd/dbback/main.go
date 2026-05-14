@@ -78,7 +78,7 @@ func main() {
 				adapter = local
 			}
 
-			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, adapter, store, cfg.SlackWebhookURL)
+			id, err := backup.RunBackup(*typeFlag, *sourceFlag, *nameFlag, "", adapter, store, cfg.SlackWebhookURL)
 			if err != nil {
 				// The notification is handled inside RunBackup, so we just log and exit here.
 				logger.Log.Error("backup command failed", "error", err)

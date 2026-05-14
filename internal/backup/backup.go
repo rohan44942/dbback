@@ -3,6 +3,7 @@ package backup
 import (
 	"compress/gzip"
 	"context"
+	"database/sql"
 
 	// "errors"
 	"fmt"
@@ -22,17 +23,15 @@ import (
 	// "github.com/rohan44942/dbback/internal/storage"
 )
 
-
-
 // StorageAdapter is implemented by both Local and S3 storage back-ends.
 type StorageAdapter interface {
 	Save(ctx context.Context, objectName string, reader io.Reader, size int64, contentType string) (string, error)
 	Open(ctx context.Context, objectName string) (io.ReadCloser, error)
-	// Delete(ctx context.Context, objectName string) error
+	Delete(ctx context.Context, objectName string) error
 }
 
 // RunBackup performs backup and uploads it through the adapter (local or S3)
-func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metadata.Store, slackWebhookURL string) (string, error) {
+func RunBackup(dbType, source, name, scheduleID string, adapter StorageAdapter, store *metadata.Store, slackWebhookURL string) (string, error) {
 	ctx := context.Background()
 	logger.Log.Info("Starting backup", "type", dbType, "source", source, "name", name)
 
@@ -88,6 +87,7 @@ func RunBackup(dbType, source, name string, adapter StorageAdapter, store *metad
 		StartedAt:   start,
 		FinishedAt:  time.Now(),
 		Size:        finalSize, // Size of the *compressed* file.
+		ScheduleID:  sql.NullString{String: scheduleID, Valid: scheduleID != ""},
 	}
 	logger.Log.Info("Backup successful", "name", meta.Name, "path", loc)
 	return store.AddBackup(meta)
