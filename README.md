@@ -62,27 +62,24 @@ docker-compose -f docker-compose.dev.yml up --build
 
 ### Run Manually
 
-1.  **Build the binaries:**
+1.  **Start PostgreSQL** and set the connection URL:
     ```sh
-    # Build the CLI tool
-    go build -o bin/dbback ./cmd/dbback
+    export DBBACK_DATABASE_URL="postgres://dbback:dbback@localhost:5432/dbback?sslmode=disable"
+    ```
 
-    # Build the controller
+2.  **Build the binaries:**
+    ```sh
+    go build -o bin/dbback ./cmd/dbback
     go build -o bin/controller ./cmd/controller
     ```
 
-2.  **Configure the application:**
-    - Copy `configs/config.yaml.example` to `configs/config.yaml` and edit it to match your environment (e.g., S3 credentials, database path).
+3.  **Configure the application:**
+    - Copy `configs/config.yaml.example` to `configs/config.yaml` and edit storage settings.
 
-3.  **Run the controller:**
-    To enable Slack notifications, first set the environment variable:
+4.  **Run the controller:**
     ```sh
-    # Get this URL from your Slack App's "Incoming Webhooks" configuration.
-    export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-    ```
-
-    Then run the controller:
-    ```sh
+    export DBBACK_AUTH_SECRET="your-secret"
+    export DBBACK_CORS_ORIGIN="http://localhost:3000"
     ./bin/controller
     ```
 

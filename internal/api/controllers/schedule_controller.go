@@ -23,6 +23,13 @@ type createScheduleRequest struct {
 	RetentionDays int    `json:"retention_days"`
 }
 
+type updateScheduleRequest struct {
+	DBType        *string `json:"db_type,omitempty"`
+	Source        *string `json:"source,omitempty"`
+	CronExpr      *string `json:"cron_expr,omitempty"`
+	RetentionDays *int    `json:"retention_days,omitempty"`
+}
+
 func NewScheduleController(store *metadata.Store, scheduler *scheduler.Scheduler) *ScheduleController {
 	return &ScheduleController{
 		Store:     store,
@@ -46,6 +53,10 @@ func (c *ScheduleController) Create(w http.ResponseWriter, r *http.Request) {
 	var req createScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if req.DBType == "" || req.Source == "" || req.CronExpr == "" || req.RetentionDays < 1 {
+		http.Error(w, "db_type, source, cron_expr, and positive retention_days are required", http.StatusBadRequest)
 		return
 	}
 
@@ -82,8 +93,51 @@ func (c *ScheduleController) Create(w http.ResponseWriter, r *http.Request) {
 
 // PUT /schedules/{id}
 func (c *ScheduleController) Update(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement update schedule logic
-	w.WriteHeader(http.StatusNotImplemented)
+	id := mux.Vars(r)["id"]
+	sc, err := c.Store.GetSchedule(id)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+
+	var req updateScheduleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if req.DBType != nil {
+		sc.DBType = *req.DBType
+	}
+	if req.Source != nil {
+		sc.Source = *req.Source
+	}
+	if req.CronExpr != nil {
+		sc.CronExpr = *req.CronExpr
+	}
+	if req.RetentionDays != nil {
+		sc.RetentionDays = *req.RetentionDays
+	}
+	if sc.DBType == "" || sc.Source == "" || sc.CronExpr == "" || sc.RetentionDays < 1 {
+		http.Error(w, "db_type, source, cron_expr, and positive retention_days are required", http.StatusBadRequest)
+		return
+	}
+
+	if c.Scheduler != nil {
+		c.Scheduler.RemoveSchedule(id)
+	}
+	if err := c.Store.UpdateSchedule(sc); err != nil {
+		http.Error(w, "failed to update schedule", http.StatusInternalServerError)
+		return
+	}
+	if c.Scheduler != nil {
+		if _, err := c.Scheduler.AddSchedule(sc); err != nil {
+			http.Error(w, "failed to restart schedule", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sc)
 }
 
 // DELETE /schedules/{id}

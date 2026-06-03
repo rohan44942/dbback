@@ -27,16 +27,21 @@ func main() {
 	cmd := os.Args[1]
 	os.MkdirAll("logs", 0755)
 	os.MkdirAll("backups", 0755)
-	os.MkdirAll("metadata", 0755)
-
 	// load config optionally
 	cfgPath := "configs/config.yaml"
 	if p := os.Getenv("DBBACK_CONFIG"); p != "" {
 		cfgPath = p
 	}
-	cfg, _ := config.Load(cfgPath)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
-	store, _ := metadata.NewStore(cfg.DBPath)
+	store, err := metadata.NewStore(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer store.Close()
 	local := storage.NewLocal("backups")
 
 	switch cmd {

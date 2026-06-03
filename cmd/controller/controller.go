@@ -15,9 +15,11 @@ import (
 	"github.com/rohan44942/dbback/internal/metadata"
 	"github.com/rohan44942/dbback/internal/scheduler"
 	"github.com/rohan44942/dbback/internal/storage"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load(".env")
 	if err := os.MkdirAll("logs", 0755); err != nil {
 		log.Fatalf("failed to create logs directory: %v", err)
 	}
@@ -32,12 +34,17 @@ func main() {
 		logger.Log.Error("failed to load config", "path", cfgPath, "error", err)
 		os.Exit(1)
 	}
-
-	store, err := metadata.NewStore(cfg.DBPath)
-	if err != nil {
-		logger.Log.Error("failed to create metadata store", "path", cfg.DBPath, "error", err)
+	if err := config.ValidateProduction(cfg); err != nil {
+		logger.Log.Error("invalid production config", "error", err)
 		os.Exit(1)
 	}
+
+	store, err := metadata.NewStore(cfg.DatabaseURL)
+	if err != nil {
+		logger.Log.Error("failed to create metadata store", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
 
 	var s3Adapter *storage.S3Adapter
 	localAdapter := storage.NewLocal("backups")
@@ -68,7 +75,7 @@ func main() {
 	sched.Start()
 	logger.Log.Info("scheduler started", "schedules_loaded", len(schedules))
 
-	srv := api.NewServer(store, sched, localAdapter, s3Adapter)
+	srv := api.NewServer(store, sched, localAdapter, s3Adapter, cfg)
 	handler := srv.Routes()
 	s := &http.Server{
 		Addr:    cfg.Server.Addr,

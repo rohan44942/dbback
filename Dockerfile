@@ -1,8 +1,17 @@
-FROM golang:1.20-alpine AS build
+FROM golang:1.23-alpine AS build
 WORKDIR /src
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN go build -o /app/bin/dbback ./cmd/dbback
+RUN CGO_ENABLED=0 go build -o /app/controller ./cmd/controller
+RUN CGO_ENABLED=0 go build -o /app/dbback ./cmd/dbback
 
-FROM alpine:3.18
-COPY --from=build /app/bin/dbback /usr/local/bin/dbback
-ENTRYPOINT ["/usr/local/bin/dbback"]
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=build /app/controller /usr/local/bin/controller
+COPY --from=build /app/dbback /usr/local/bin/dbback
+RUN mkdir -p logs backups configs
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/controller"]

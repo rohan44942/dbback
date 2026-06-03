@@ -1,6 +1,23 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbback-postgres
+    environment:
+      POSTGRES_USER: dbback
+      POSTGRES_PASSWORD: dbback
+      POSTGRES_DB: dbback
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbback -d dbback"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -20,21 +37,27 @@ services:
       dockerfile: Dockerfile
     container_name: dbback
     depends_on:
-      - minio
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
     environment:
+      DBBACK_DATABASE_URL: postgres://dbback:dbback@postgres:5432/dbback?sslmode=disable
       DBBACK_STORAGE_TYPE: s3
       DBBACK_STORAGE_ENDPOINT: minio:9000
       DBBACK_STORAGE_BUCKET: backups
       DBBACK_STORAGE_ACCESS_KEY: minioadmin
       DBBACK_STORAGE_SECRET_KEY: minioadmin
-      DBBACK_SERVER_ADDR: ":8080"
-      # This passes the webhook URL from your .env file into the container
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      DBBACK_ADDR: ":8080"
+      DBBACK_CORS_ORIGIN: http://localhost:3000
+      DBBACK_AUTH_SECRET: dev-local-secret-change-me
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     ports:
       - "8080:8080"
     volumes:
       - ./backups:/app/backups
-      - ./metadata:/app/metadata
       - ./configs:/app/configs
+
 volumes:
+  pg_data:
   minio_data:
