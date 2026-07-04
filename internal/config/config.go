@@ -80,14 +80,20 @@ func loadFromEnv(cfg *AppConfig) {
 	if v := os.Getenv("DBBACK_STORAGE_SECRET_KEY"); v != "" {
 		cfg.Storage.SecretKey = v
 	}
+	if v := os.Getenv("DBBACK_STORAGE_USE_SSL"); v != "" {
+		cfg.Storage.UseSSL = v == "1" || strings.EqualFold(v, "true")
+	} else if strings.Contains(cfg.Storage.Endpoint, "amazonaws.com") {
+		cfg.Storage.UseSSL = true
+	}
 	if v := os.Getenv("DBBACK_KEY"); v != "" {
 		cfg.Key = v
 	}
 	if v := os.Getenv("DBBACK_ADDR"); v != "" {
 		cfg.Server.Addr = v
-	}
-	if v := os.Getenv("DBBACK_SERVER_ADDR"); v != "" {
+	} else if v := os.Getenv("DBBACK_SERVER_ADDR"); v != "" {
 		cfg.Server.Addr = v
+	} else if v := os.Getenv("PORT"); v != "" {
+		cfg.Server.Addr = ":" + v
 	}
 	if v := os.Getenv("DBBACK_CORS_ORIGIN"); v != "" {
 		cfg.CORSOrigin = v
