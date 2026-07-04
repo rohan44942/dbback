@@ -74,6 +74,9 @@ func loadFromEnv(cfg *AppConfig) {
 	if v := os.Getenv("DBBACK_STORAGE_ENDPOINT"); v != "" {
 		cfg.Storage.Endpoint = v
 	}
+	if v := os.Getenv("DBBACK_STORAGE_REGION"); v != "" {
+		cfg.Storage.Region = v
+	}
 	if v := os.Getenv("DBBACK_STORAGE_ACCESS_KEY"); v != "" {
 		cfg.Storage.AccessKey = v
 	}
@@ -89,11 +92,11 @@ func loadFromEnv(cfg *AppConfig) {
 		cfg.Key = v
 	}
 	if v := os.Getenv("DBBACK_ADDR"); v != "" {
-		cfg.Server.Addr = v
+		cfg.Server.Addr = normalizeListenAddr(v)
 	} else if v := os.Getenv("DBBACK_SERVER_ADDR"); v != "" {
-		cfg.Server.Addr = v
+		cfg.Server.Addr = normalizeListenAddr(v)
 	} else if v := os.Getenv("PORT"); v != "" {
-		cfg.Server.Addr = ":" + v
+		cfg.Server.Addr = normalizeListenAddr(v)
 	}
 	if v := os.Getenv("DBBACK_CORS_ORIGIN"); v != "" {
 		cfg.CORSOrigin = v
@@ -134,6 +137,17 @@ var (
 type configError struct{ msg string }
 
 func (e *configError) Error() string { return e.msg }
+
+func normalizeListenAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ":8080"
+	}
+	if !strings.Contains(addr, ":") {
+		return ":" + addr
+	}
+	return addr
+}
 
 func CORSOrigins(cfg *AppConfig) []string {
 	raw := cfg.CORSOrigin

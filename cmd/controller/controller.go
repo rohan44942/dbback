@@ -52,6 +52,7 @@ func main() {
 	if cfg.Storage.Type == "s3" {
 		s3Cfg := storage.S3Config{
 			Endpoint:  cfg.Storage.Endpoint,
+			Region:    cfg.Storage.Region,
 			AccessKey: cfg.Storage.AccessKey,
 			SecretKey: cfg.Storage.SecretKey,
 			Bucket:    cfg.Storage.Bucket,

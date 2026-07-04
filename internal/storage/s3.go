@@ -20,17 +20,51 @@ type S3Adapter struct {
 
 type S3Config struct {
 	Endpoint  string
+	Region    string
 	AccessKey string
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
 }
 
+func normalizeEndpoint(endpoint string) string {
+	endpoint = strings.TrimSpace(endpoint)
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	return strings.TrimSuffix(endpoint, "/")
+}
+
+func parseRegionFromEndpoint(endpoint string) string {
+	endpoint = normalizeEndpoint(endpoint)
+	// s3.ap-southeast-2.amazonaws.com → ap-southeast-2
+	if strings.HasPrefix(endpoint, "s3.") && strings.HasSuffix(endpoint, ".amazonaws.com") {
+		host := strings.TrimSuffix(strings.TrimPrefix(endpoint, "s3."), ".amazonaws.com")
+		if host != "" && host != "amazonaws" {
+			return host
+		}
+	}
+	return ""
+}
+
 func NewS3Adapter(cfg S3Config) (*S3Adapter, error) {
-	minioClient, err := minio.New(cfg.Endpoint, &minio.Options{
+	endpoint := normalizeEndpoint(cfg.Endpoint)
+	region := strings.TrimSpace(cfg.Region)
+	if region == "" {
+		region = parseRegionFromEndpoint(endpoint)
+	}
+	if endpoint == "" {
+		endpoint = "s3.amazonaws.com"
+	}
+
+	opts := &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.UseSSL,
-	})
+	}
+	if region != "" {
+		opts.Region = region
+	}
+
+	minioClient, err := minio.New(endpoint, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +76,11 @@ func NewS3Adapter(cfg S3Config) (*S3Adapter, error) {
 	}
 	if !found {
 		// try to create (best-effort)
-		if err := minioClient.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{}); err != nil {
+		mbOpts := minio.MakeBucketOptions{}
+		if region != "" {
+			mbOpts.Region = region
+		}
+		if err := minioClient.MakeBucket(ctx, cfg.Bucket, mbOpts); err != nil {
 			// some providers will prevent creation; ignore error if bucket exists via race
 			return nil, err
 		}

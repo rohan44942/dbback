@@ -66,6 +66,7 @@ func main() {
 			if cfg != nil && cfg.Storage.Type == "s3" {
 				s3Adapter, err := storage.NewS3Adapter(storage.S3Config{
 					Endpoint:  cfg.Storage.Endpoint,
+					Region:    cfg.Storage.Region,
 					AccessKey: cfg.Storage.AccessKey,
 					SecretKey: cfg.Storage.SecretKey,
 					Bucket:    cfg.Storage.Bucket,
@@ -128,6 +129,7 @@ func main() {
 		if cfg != nil && cfg.Storage.Type == "s3" {
 			s3Adapter, err := storage.NewS3Adapter(storage.S3Config{
 				Endpoint:  cfg.Storage.Endpoint,
+				Region:    cfg.Storage.Region,
 				AccessKey: cfg.Storage.AccessKey,
 				SecretKey: cfg.Storage.SecretKey,
 				Bucket:    cfg.Storage.Bucket,
