@@ -149,6 +149,11 @@ func normalizeListenAddr(addr string) string {
 	return addr
 }
 
+func NormalizeOrigin(origin string) string {
+	origin = strings.TrimSpace(origin)
+	return strings.TrimSuffix(origin, "/")
+}
+
 func CORSOrigins(cfg *AppConfig) []string {
 	raw := cfg.CORSOrigin
 	if raw == "" {
@@ -157,7 +162,7 @@ func CORSOrigins(cfg *AppConfig) []string {
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		p = strings.TrimSpace(p)
+		p = NormalizeOrigin(p)
 		if p != "" {
 			out = append(out, p)
 		}

@@ -91,6 +91,7 @@ func (s *Server) Routes() http.Handler {
 }
 
 func (s *Server) isAllowedOrigin(origin string) bool {
+	origin = config.NormalizeOrigin(origin)
 	for _, allowed := range s.CORSOrigins {
 		if strings.EqualFold(allowed, origin) {
 			return true

@@ -38,7 +38,7 @@ func main() {
 		logger.Log.Error("invalid production config", "error", err)
 		os.Exit(1)
 	}
-	logger.Log.Info("config loaded", "addr", cfg.Server.Addr, "env", cfg.Env, "storage_type", cfg.Storage.Type)
+	logger.Log.Info("config loaded", "addr", cfg.Server.Addr, "env", cfg.Env, "storage_type", cfg.Storage.Type, "cors_origins", config.CORSOrigins(cfg))
 
 	store, err := metadata.NewStore(cfg.DatabaseURL)
 	if err != nil {
