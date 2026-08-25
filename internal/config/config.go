@@ -31,6 +31,7 @@ type AppConfig struct {
 	CORSOrigin      string        `yaml:"-"`
 	SlackWebhookURL string        `yaml:"-"`
 	Env             string        `yaml:"-"`
+	GoogleClientID  string        `yaml:"-"`
 }
 
 const defaultDevAuthSecret = "development-auth-secret-change-before-production"
@@ -106,6 +107,11 @@ func loadFromEnv(cfg *AppConfig) {
 	}
 	if v := os.Getenv("DBBACK_ENV"); v != "" {
 		cfg.Env = v
+	}
+	if v := os.Getenv("GOOGLE_CLIENT_ID"); v != "" {
+		cfg.GoogleClientID = v
+	} else if v := os.Getenv("DBBACK_GOOGLE_CLIENT_ID"); v != "" {
+		cfg.GoogleClientID = v
 	}
 }
 

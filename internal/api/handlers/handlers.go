@@ -15,11 +15,12 @@ import (
 )
 
 type Server struct {
-	Store       *metadata.Store
-	Scheduler   *scheduler.Scheduler
-	Local       StorageAdapter
-	S3          StorageAdapter
-	CORSOrigins []string
+	Store          *metadata.Store
+	Scheduler      *scheduler.Scheduler
+	Local          StorageAdapter
+	S3             StorageAdapter
+	CORSOrigins    []string
+	GoogleClientID string
 }
 
 type StorageAdapter interface {
@@ -30,11 +31,12 @@ type StorageAdapter interface {
 
 func NewServer(store *metadata.Store, sched *scheduler.Scheduler, local, s3 StorageAdapter, cfg *config.AppConfig) *Server {
 	return &Server{
-		Store:       store,
-		Scheduler:   sched,
-		Local:       local,
-		S3:          s3,
-		CORSOrigins: config.CORSOrigins(cfg),
+		Store:          store,
+		Scheduler:      sched,
+		Local:          local,
+		S3:             s3,
+		CORSOrigins:    config.CORSOrigins(cfg),
+		GoogleClientID: cfg.GoogleClientID,
 	}
 }
 
@@ -43,7 +45,7 @@ func (s *Server) Routes() http.Handler {
 
 	backupCtrl := controllers.NewBackupController(s.Store, s.getStorageAdapter())
 	scheduleCtrl := controllers.NewScheduleController(s.Store, s.Scheduler)
-	authCtrl := controllers.NewAuthController(s.Store)
+	authCtrl := controllers.NewAuthController(s.Store, s.GoogleClientID)
 	healthCtrl := controllers.NewHealthController(s.Store)
 
 	requireAuth := func(next http.HandlerFunc) http.HandlerFunc {
@@ -66,6 +68,7 @@ func (s *Server) Routes() http.Handler {
 
 	r.HandleFunc("/api/auth/login", authCtrl.Login).Methods("POST")
 	r.HandleFunc("/api/auth/register", authCtrl.Register).Methods("POST")
+	r.HandleFunc("/api/auth/google", authCtrl.GoogleLogin).Methods("POST")
 	r.HandleFunc("/api/auth/logout", authCtrl.Logout).Methods("POST")
 	r.HandleFunc("/api/auth/refresh", requireAuth(authCtrl.Refresh)).Methods("POST")
 	r.HandleFunc("/api/auth/me", requireAuth(authCtrl.Me)).Methods("GET")

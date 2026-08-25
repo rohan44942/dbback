@@ -12,18 +12,24 @@ import (
 
 	tokenauth "github.com/rohan44942/dbback/internal/auth"
 	"github.com/rohan44942/dbback/internal/config"
+	"github.com/rohan44942/dbback/internal/googleauth"
 	"github.com/rohan44942/dbback/internal/metadata"
 )
 
 type AuthController struct {
-	Store  *metadata.Store
-	Secret string
+	Store          *metadata.Store
+	Secret         string
+	GoogleClientID string
 }
 
 type authRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+}
+
+type googleAuthRequest struct {
+	Credential string `json:"credential"`
 }
 
 type userProfile struct {
@@ -39,10 +45,11 @@ type authResponse struct {
 	ExpiresAt int64       `json:"expiresAt"`
 }
 
-func NewAuthController(store *metadata.Store) *AuthController {
+func NewAuthController(store *metadata.Store, googleClientID string) *AuthController {
 	return &AuthController{
-		Store:  store,
-		Secret: config.AuthSecret(),
+		Store:          store,
+		Secret:         config.AuthSecret(),
+		GoogleClientID: googleClientID,
 	}
 }
 
@@ -64,6 +71,10 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "login failed", http.StatusInternalServerError)
+		return
+	}
+	if strings.TrimSpace(user.PasswordHash) == "" {
+		http.Error(w, "this account uses Google sign-in", http.StatusUnauthorized)
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
@@ -106,6 +117,74 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	c.writeAuthResponse(w, user)
 }
 
+func (c *AuthController) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(c.GoogleClientID) == "" {
+		http.Error(w, "google sign-in is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req googleAuthRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Credential) == "" {
+		http.Error(w, "credential is required", http.StatusBadRequest)
+		return
+	}
+
+	profile, err := googleauth.VerifyIDToken(r.Context(), req.Credential, c.GoogleClientID)
+	if err != nil {
+		if errors.Is(err, googleauth.ErrEmailUnverified) {
+			http.Error(w, "google email is not verified", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "invalid google credential", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := c.Store.GetUserByGoogleID(profile.Subject)
+	if err == nil {
+		c.writeAuthResponse(w, user)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "google login failed", http.StatusInternalServerError)
+		return
+	}
+
+	existing, err := c.Store.GetUserByEmail(profile.Email)
+	if err == nil {
+		if existing.GoogleID == "" {
+			if linkErr := c.Store.LinkGoogleID(existing.ID, profile.Subject); linkErr != nil {
+				http.Error(w, "failed to link google account", http.StatusInternalServerError)
+				return
+			}
+			existing.GoogleID = profile.Subject
+		} else if existing.GoogleID != profile.Subject {
+			http.Error(w, "email already linked to another google account", http.StatusConflict)
+			return
+		}
+		c.writeAuthResponse(w, existing)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "google login failed", http.StatusInternalServerError)
+		return
+	}
+
+	user, err = c.Store.CreateGoogleUser(profile.Email, profile.Name, profile.Subject)
+	if err != nil {
+		if errors.Is(err, metadata.ErrUserExists) {
+			http.Error(w, "email already registered", http.StatusConflict)
+			return
+		}
+		http.Error(w, "google registration failed", http.StatusInternalServerError)
+		return
+	}
+	c.writeAuthResponse(w, user)
+}
+
 func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -136,7 +215,7 @@ func (c *AuthController) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toUserProfile(user))
+	_ = json.NewEncoder(w).Encode(toUserProfile(user))
 }
 
 func (c *AuthController) writeAuthResponse(w http.ResponseWriter, user metadata.User) {
@@ -158,7 +237,7 @@ func (c *AuthController) writeAuthResponse(w http.ResponseWriter, user metadata.
 		ExpiresAt: expiresAt.UnixMilli(),
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func toUserProfile(user metadata.User) userProfile {

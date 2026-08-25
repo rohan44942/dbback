@@ -85,19 +85,33 @@ $env:DBBACK_CORS_ORIGIN = "http://localhost:3000"
 go run ./cmd/controller
 ```
 
-## 3. Frontend (Vercel)
+## 3. Frontend (Netlify)
 
-1. Set project root directory to `dbback-frontend`.
-2. Add environment variable:
+1. Set project root directory to `dbback-frontend` (or deploy the frontend-only repo).
+2. Add environment variables:
    ```
    NEXT_PUBLIC_API_URL=https://your-api-domain.com/api
+   NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com
    ```
 3. Deploy.
 
-4. Set backend `DBBACK_CORS_ORIGIN` to your Vercel URL:
+4. Set backend CORS + Google client ID:
    ```
-   DBBACK_CORS_ORIGIN=https://your-app.vercel.app
+   DBBACK_CORS_ORIGIN=https://dbbackup.netlify.app
+   GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com
    ```
+   Use the **same** Web client ID on frontend and backend.
+
+### Google Cloud Console setup
+
+1. Create an OAuth client (type: **Web application**).
+2. Authorized JavaScript origins:
+   - `http://localhost:3000`
+   - `https://dbbackup.netlify.app`
+3. Authorized redirect URIs (GIS button flow usually only needs origins):
+   - `http://localhost:3000`
+   - `https://dbbackup.netlify.app`
+4. Copy the Client ID into Netlify + Render env vars above.
 
 ## 4. Deploy order
 

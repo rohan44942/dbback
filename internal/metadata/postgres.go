@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,8 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Name         string
+	GoogleID     string
+	AuthProvider string
 	CreatedAt    time.Time
 }
 
@@ -83,12 +86,28 @@ func (s *Store) Ping() error {
 }
 
 func (s *Store) migrate() error {
-	data, err := migrationFiles.ReadFile("migrations/001_init.sql")
+	entries, err := migrationFiles.ReadDir("migrations")
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(string(data))
-	return err
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		data, err := migrationFiles.ReadFile("migrations/" + name)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", name, err)
+		}
+		if _, err := s.db.Exec(string(data)); err != nil {
+			return fmt.Errorf("apply migration %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) AddBackup(b BackupMeta) (string, error) {
