@@ -1,0 +1,27 @@
+# Copy to configs/config.yaml and adjust for your environment.
+# Secrets (auth secret, S3 keys, Slack webhook) must be set via environment variables.
+
+database_url: "postgres://dbback:dbback@localhost:5432/dbback?sslmode=disable"
+
+retention_days: 7
+
+storage:
+  type: "local"                  # local | s3
+  bucket: "dbbackups"
+  endpoint: "localhost:9000"
+  access_key: ""
+  secret_key: ""
+  use_ssl: false
+
+server:
+  addr: ":8080"
+
+# Environment variables (recommended for production):
+# DBBACK_DATABASE_URL=postgres://user:pass@host:5432/dbback?sslmode=require
+# DBBACK_AUTH_SECRET=your-long-random-secret
+# DBBACK_CORS_ORIGIN=https://your-app.vercel.app,http://localhost:3000
+# DBBACK_STORAGE_TYPE=s3
+# DBBACK_STORAGE_BUCKET=...
+# DBBACK_STORAGE_ACCESS_KEY=...
+# DBBACK_STORAGE_SECRET_KEY=...
+# SLACK_WEBHOOK_URL=...

@@ -4,6 +4,7 @@
 *.db
 bin/
 .env
+render.env
 .vscode/
 # go build
 *.exe
